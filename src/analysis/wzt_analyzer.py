@@ -6,6 +6,7 @@ import os
 from src.core.image_processing import ImagePreprocessor
 from src.core.vectorization import StrokeTokenizer
 from src.features.memory import SymbolRegistry
+# Ensure FeatureExtractor is imported for analysis
 from src.features.extraction import FeatureExtractor
 
 class WarteggAnalyzer:
@@ -71,22 +72,23 @@ class WarteggAnalyzer:
     def _perform_standard_analysis(self, image: np.ndarray, square_id: int) -> Dict[str, Any]:
         """
         Dispatches to specific feature extraction logic based on square_id.
+        Delegates to FeatureExtractor for squares 1, 3, 4, and 5.
         """
-        features = {}
+        extracted_features: Dict[str, Any] = {}
 
         if square_id == 1:
-            features = FeatureExtractor.extract_square_1_features(image)
+            extracted_features = FeatureExtractor.extract_square_1_features(image)
         elif square_id == 3:
-            features = FeatureExtractor.extract_square_3_features(image)
+            extracted_features = FeatureExtractor.extract_square_3_features(image)
         elif square_id == 4:
-            features = FeatureExtractor.extract_square_4_features(image)
+            extracted_features = FeatureExtractor.extract_square_4_features(image)
         elif square_id == 5:
-            features = FeatureExtractor.extract_square_5_features(image)
+            extracted_features = FeatureExtractor.extract_square_5_features(image)
         else:
             # Default or TODO for other squares
-            features = {
+            extracted_features = {
                 "status": "pending_implementation",
                 "square_id": square_id
             }
 
-        return features
+        return extracted_features
