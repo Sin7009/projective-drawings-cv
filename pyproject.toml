@@ -18,6 +18,8 @@ dependencies = [
     "plotly",
     "mediapipe",
     "ultralytics",
+    "streamlit",
+    "streamlit-drawable-canvas",
     "pytest>=8.4.2",
 ]
 
