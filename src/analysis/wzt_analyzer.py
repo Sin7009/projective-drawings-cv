@@ -6,6 +6,7 @@ import os
 from src.core.image_processing import ImagePreprocessor
 from src.core.vectorization import StrokeTokenizer
 from src.features.memory import SymbolRegistry
+from src.features.extraction import FeatureExtractor
 
 class WarteggAnalyzer:
     """
@@ -58,9 +59,10 @@ class WarteggAnalyzer:
                     square_result["semantic_match"] = match
                     square_result["analysis_mode"] = "Semantic"
 
-            # 2c. Standard Analysis (Placeholder for future implementation)
-            if square_result["analysis_mode"] == "Standard":
-                square_result["features"] = self._perform_standard_analysis(cleaned_image, square_id)
+            # 2c. Standard Analysis (Specific CV Logic)
+            # We perform this even if semantic match is found, to get the metrics
+            features = self._perform_standard_analysis(cleaned_image, square_id)
+            square_result["features"] = features
 
             results[square_id] = square_result
 
@@ -68,10 +70,23 @@ class WarteggAnalyzer:
 
     def _perform_standard_analysis(self, image: np.ndarray, square_id: int) -> Dict[str, Any]:
         """
-        Placeholder for specific per-square analysis logic.
+        Dispatches to specific feature extraction logic based on square_id.
         """
-        # Real implementation would go here (e.g., curve analysis for Square 2)
-        return {
-            "status": "analyzed",
-            "square_id": square_id
-        }
+        features = {}
+
+        if square_id == 1:
+            features = FeatureExtractor.extract_square_1_features(image)
+        elif square_id == 3:
+            features = FeatureExtractor.extract_square_3_features(image)
+        elif square_id == 4:
+            features = FeatureExtractor.extract_square_4_features(image)
+        elif square_id == 5:
+            features = FeatureExtractor.extract_square_5_features(image)
+        else:
+            # Default or TODO for other squares
+            features = {
+                "status": "pending_implementation",
+                "square_id": square_id
+            }
+
+        return features
