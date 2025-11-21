@@ -187,6 +187,39 @@ class PsychometricDataLoader:
         out_df.to_csv(output_csv, index=False)
         print(f"Expected filenames saved to {output_csv}")
 
+    def generate_filename_checklist(self, output_csv: Optional[str] = None) -> pd.DataFrame:
+        """
+        Generates a checklist of filenames that should be used when scanning, based on the subjects' names.
+        This helps in renaming the scanned files to match what the loader expects.
+
+        Args:
+            output_csv: Optional path to save the checklist.
+
+        Returns:
+            pd.DataFrame: A dataframe containing 'Original' name and 'Expected_Filename'.
+        """
+        if self.df is None:
+             raise ValueError("Dataframe not loaded. Call load_and_merge first.")
+
+        if 'Ф.И.О' not in self.df.columns:
+            raise ValueError("Column 'Ф.И.О' not found in dataframe.")
+
+        checklist_data = []
+        for name in self.df['Ф.И.О']:
+            if isinstance(name, str):
+                t_name = self._transliterate(name)
+                checklist_data.append({'Original': name, 'Expected_Filename': t_name + ".jpg"})
+            else:
+                checklist_data.append({'Original': name, 'Expected_Filename': None})
+
+        checklist_df = pd.DataFrame(checklist_data)
+
+        if output_csv:
+            checklist_df.to_csv(output_csv, index=False)
+            print(f"Filename checklist saved to {output_csv}")
+
+        return checklist_df
+
     def analyze_correlations(self, dataframe: pd.DataFrame, target_column: str = 'target_anxiety',
                              feature_columns: Optional[List[str]] = None) -> Dict:
         """
