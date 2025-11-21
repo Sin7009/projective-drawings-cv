@@ -38,6 +38,31 @@ To facilitate the creation of a structured Visual Knowledge Graph, the project i
     *   **Input Form:** Provides fields to capture semantic data ("Child's Title") and expert diagnostic labels.
     *   **Decomposition Mode:** Enables granular annotation by allowing experts to draw bounding boxes around specific sub-parts of a drawing (e.g., "sharp teeth", "large hands"), linking visual regions to specific concepts in the ontology.
 *   **Ontology (`src/core/ontology.py`):** Defines hierarchical `ConceptNode` structures to organize labels and attributes systematically.
+### Supervised Learning Pipeline (Data-Driven Approach)
+We have shifted to a data-driven approach to discover visual markers for psychological traits. The `src/training` module provides tools to link objective psychometric data with drawing features.
+
+*   **DataLinker:** Matches image scans with external CSV datasets (containing IQ, Anxiety, etc.) and manages Train/Validation splits.
+*   **PatternDiscoverer:** Implements a "Reverse Approach" to analysis. Instead of pre-defining features, it:
+    1.  Filters the dataset by a high-score threshold (e.g., "High Anxiety").
+    2.  Extracts a comprehensive vector of visual features (color ratios, pressure, line thickness, etc.).
+    3.  Compares the target group against the "normal" population using statistical T-tests.
+    4.  Outputs a report of features that are significantly correlated (p < 0.05) with the trait.
+
+**Usage Example:**
+```python
+from src.training.trainer import DataLinker, PatternDiscoverer
+
+# 1. Link Data
+linker = DataLinker(image_folder="data/raw_scans", csv_path="data/scores.csv")
+linker.link_data()
+
+# 2. Discover Patterns
+discoverer = PatternDiscoverer(linker.linked_data)
+report = discoverer.find_common_features(target_label="anxiety_score", threshold=75)
+
+print(report)
+# Output: "High Anxiety correlates with avg_pressure (p=0.03) and warm_cold_ratio (p=0.01)..."
+```
 
 ## Installation
 
@@ -75,6 +100,7 @@ This project uses [uv](https://github.com/astral-sh/uv) for fast and efficient d
     -   `wzt/`: Wartegg Drawing Test module.
     -   `htp/`: House-Tree-Person module.
     -   `human_figure/`: Human Figure module.
+-   `src/training`: Supervised learning and pattern discovery tools.
 
 ## Roadmap
 - [ ] Implement specific feature extraction for WZT.
