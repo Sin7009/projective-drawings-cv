@@ -11,12 +11,15 @@ def test_check_blur_good_image(preprocessor):
     # Sharp image
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     cv2.rectangle(image, (20, 20), (80, 80), (255, 255, 255), -1)
-    # Laplacian variance should be high
+    # Laplacian variance should be high, so check_blur returns False (not blurry)
+    # Need to ensure variance > threshold (100.0)
+    # A sharp rectangle on black background has very high variance.
     assert preprocessor.check_blur(image) is False
 
 def test_check_blur_bad_image(preprocessor):
     # Flat image (variance 0)
     image = np.zeros((100, 100, 3), dtype=np.uint8) + 128
+    # Variance is 0 < 100, so check_blur returns True (blurry)
     assert preprocessor.check_blur(image) is True
 
 def test_find_paper_contour(preprocessor):

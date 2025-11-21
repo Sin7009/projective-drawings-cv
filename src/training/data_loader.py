@@ -9,17 +9,32 @@ class PsychometricDataLoader:
     Loads and processes psychometric data from CSV files, and links them with image data.
     """
 
+    # Speech Status (Реч_статус)
+    DIAGNOSIS_MAP = {
+        1: "ONR",        # General Speech Underdevelopment
+        2: "Norm",       # Normal
+        3: "FFN",        # Phonetic-Phonemic
+        4: "Stuttering"  # Logoneurosis
+    }
+
+    # Gender (Пол)
+    GENDER_MAP = {
+        0: "Female",
+        1: "Male"
+    }
+
     # Column mapping from Russian CSV headers to internal English variable names
     COLUMN_MAPPING = {
         "Тревожность Дорки, Амен, Теммл": "target_anxiety",
         "Таблицы Агрессивность": "target_aggression",
         "Таблицы Контакт": "target_social_contact",
         "Возраст": "meta_age",
-        "Пол (0 - Ж; 1 - М)": "meta_gender"
+        "Пол (0 - Ж; 1 - М)": "meta_gender",
+        "Реч_статус": "target_diagnosis"
     }
 
     def __init__(self):
-        pass
+        self.df: Optional[pd.DataFrame] = None
 
     def load_and_merge(self, path_norma: str, path_onr: str, fill_na_strategy: str = 'mean') -> pd.DataFrame:
         """
@@ -29,8 +44,8 @@ class PsychometricDataLoader:
             path_norma: Path to the Norma_Svodnaya.csv file.
             path_onr: Path to the ONR_Svodnaya.csv file.
             fill_na_strategy: Strategy to handle missing values ('mean', 'drop', or None).
-                              'mean' fills NaNs in numeric columns with the column mean.
-                              'drop' drops rows with NaNs.
+                              'mean' fills NaNs in numeric columns with the column mean,
+                              EXCEPT for target columns which are preserved.
 
         Returns:
             pd.DataFrame: The merged and standardized dataframe.
@@ -38,7 +53,7 @@ class PsychometricDataLoader:
         df_norma = pd.read_csv(path_norma)
         df_onr = pd.read_csv(path_onr)
 
-        # Add a source column to distinguish datasets if needed, or just merge
+        # Add a source column to distinguish datasets if needed
         df_norma['dataset_source'] = 'norma'
         df_onr['dataset_source'] = 'onr'
 
@@ -48,30 +63,53 @@ class PsychometricDataLoader:
         # Rename columns
         combined_df.rename(columns=self.COLUMN_MAPPING, inplace=True)
 
-        # Handle Missing Values
-        if fill_na_strategy == 'drop':
-            combined_df.dropna(subset=self.COLUMN_MAPPING.values(), inplace=True)
-        elif fill_na_strategy == 'mean':
-            for col in self.COLUMN_MAPPING.values():
-                if col in combined_df.columns:
-                    # Only fill numeric columns with mean
-                    if pd.api.types.is_numeric_dtype(combined_df[col]):
-                        combined_df[col] = combined_df[col].fillna(combined_df[col].mean())
+        # Apply Value Mappings
+        if 'target_diagnosis' in combined_df.columns:
+            combined_df['target_diagnosis'] = combined_df['target_diagnosis'].map(self.DIAGNOSIS_MAP)
 
+        if 'meta_gender' in combined_df.columns:
+            combined_df['meta_gender'] = combined_df['meta_gender'].map(self.GENDER_MAP)
+
+        # Handle Missing Values
+        target_columns = set(self.COLUMN_MAPPING.values())
+
+        if fill_na_strategy == 'drop':
+            combined_df.dropna(subset=[col for col in target_columns if col in combined_df.columns], inplace=True)
+        elif fill_na_strategy == 'mean':
+            for col in combined_df.columns:
+                # Do NOT fill NaNs in target columns
+                if col in target_columns:
+                    continue
+
+                # Only fill numeric columns with mean
+                if pd.api.types.is_numeric_dtype(combined_df[col]):
+                    combined_df[col] = combined_df[col].fillna(combined_df[col].mean())
+
+        self.df = combined_df
         return combined_df
 
-    def match_images(self, dataframe: pd.DataFrame, image_dir: str) -> pd.DataFrame:
+    def match_images(self, dataframe: Optional[pd.DataFrame] = None, image_dir: str = "") -> pd.DataFrame:
         """
         Matches images in the directory to the dataframe based on 'Ф.И.О' column.
         Adds 'image_path' column to the dataframe.
 
         Args:
-            dataframe: The dataframe containing psychometric data.
+            dataframe: The dataframe containing psychometric data. If None, uses self.df.
             image_dir: Directory containing the images.
 
         Returns:
             pd.DataFrame: Dataframe with 'image_path' column.
         """
+        if dataframe is None:
+            if self.df is None:
+                raise ValueError("Dataframe not loaded. Call load_and_merge first or provide a dataframe.")
+            dataframe = self.df
+        else:
+            # If a dataframe is provided, we work on it.
+            # Should we update self.df? Let's assume yes if it matches self.df in identity or content,
+            # but to be safe we just return the modified one.
+            pass
+
         if 'Ф.И.О' not in dataframe.columns:
             raise ValueError("Column 'Ф.И.О' not found in dataframe.")
 
@@ -80,29 +118,74 @@ class PsychometricDataLoader:
                 return None
 
             # Transliterate name to match filename format
-            # This is a simplified transliteration, assuming standard mapping.
             transliterated_name = self._transliterate(name)
 
-            # Try to find the file (assuming jpg, png, etc.)
-            # We search for files that start with the transliterated name
-            # Or we can try exact match if extensions are known.
-            # Let's try a flexible search in the directory.
-
-            # Simple approach: check for common extensions
+            # Check for common extensions
             for ext in ['.jpg', '.jpeg', '.png', '.bmp']:
                 filename = f"{transliterated_name}{ext}"
                 filepath = os.path.join(image_dir, filename)
                 if os.path.exists(filepath):
                     return filepath
-
-            # Alternative: check if transliterated name is a substring of any file in dir?
-            # The requirement says: "Assume image filenames correspond to the `Ф.И.О` column (transliterated)"
-            # So exact match of name part is likely intended.
-
             return None
 
         dataframe['image_path'] = dataframe['Ф.И.О'].apply(find_image)
+
+        # Update self.df if we are working on the internal state
+        if self.df is not None and dataframe is self.df:
+            self.df = dataframe
+        elif self.df is not None and dataframe.equals(self.df): # This might be expensive
+            self.df = dataframe
+
+        # If the user passed a dataframe that is likely the one we just loaded, update self.df
+        # To be safe, let's just update self.df if it was None, or if the user wants to rely on state.
+        # The prompt implies we should update the state.
+        # Let's just update self.df to the result if self.df was set.
+        if self.df is not None:
+             # We might be replacing it with a version that has image_path
+             self.df = dataframe
+
         return dataframe
+
+    def get_clean_dataset(self, target_col: str) -> pd.DataFrame:
+        """
+        Returns only the rows where target_col is not NaN and image_path exists.
+        This ensures we train on valid ground truth only.
+        """
+        if self.df is None:
+             raise ValueError("Dataframe not loaded. Call load_and_merge first.")
+
+        if target_col not in self.df.columns:
+            raise ValueError(f"Target column '{target_col}' not found in dataframe.")
+
+        if 'image_path' not in self.df.columns:
+            raise ValueError("Column 'image_path' not found. Call match_images first.")
+
+        # Filter: target not NaN AND image_path not None
+        clean_df = self.df[self.df[target_col].notna() & self.df['image_path'].notna()]
+
+        return clean_df
+
+    def generate_expected_filenames(self, output_csv: str = 'filenames.csv'):
+        """
+        Iterates through the dataframe and generates a list of expected filenames based on the 'Ф.И.О' column.
+        """
+        if self.df is None:
+             raise ValueError("Dataframe not loaded. Call load_and_merge first.")
+
+        if 'Ф.И.О' not in self.df.columns:
+            raise ValueError("Column 'Ф.И.О' not found in dataframe.")
+
+        expected_files = []
+        for name in self.df['Ф.И.О']:
+            if isinstance(name, str):
+                t_name = self._transliterate(name)
+                expected_files.append({'Original': name, 'Expected_Filename': t_name + ".jpg"}) # Assuming .jpg default
+            else:
+                expected_files.append({'Original': name, 'Expected_Filename': None})
+
+        out_df = pd.DataFrame(expected_files)
+        out_df.to_csv(output_csv, index=False)
+        print(f"Expected filenames saved to {output_csv}")
 
     def analyze_correlations(self, dataframe: pd.DataFrame, target_column: str = 'target_anxiety',
                              feature_columns: Optional[List[str]] = None) -> Dict:
@@ -173,6 +256,7 @@ class PsychometricDataLoader:
     def _transliterate(self, text: str) -> str:
         """
         Simple transliteration from Russian to English.
+        Spaces are replaced with underscores.
         """
         ru_en_map = {
             'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
@@ -184,7 +268,8 @@ class PsychometricDataLoader:
             'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
             'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
             'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch',
-            'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+            'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+            ' ': '_' # Replace space with underscore
         }
 
         result = []
