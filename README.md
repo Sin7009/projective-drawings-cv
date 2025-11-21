@@ -74,6 +74,15 @@ The framework now includes multimodal analysis and validation strategies:
     *   **Convergent Validity:** Includes tools to correlate computer vision-derived scores with standard psychometric scales (e.g., anxiety, aggression) using Pearson correlation, following the methodology of Valyavko & Knyazev (2014).
 *   **Input Flexibility:** Supports both static scans and digital tablet input (time-series data) for trajectory analysis.
 
+### Semi-Supervised Annotation Workflow (Human-in-the-Loop)
+To facilitate the creation of a structured Visual Knowledge Graph, the project includes a Streamlit-based labeling tool.
+
+*   **Web Interface (`src/labeling/app.py`):**
+    *   **Cluster View:** Automatically groups unlabeled drawings by visual similarity using CNN feature vectors (ResNet18) and K-Means clustering. This allows researchers to label coherent batches of drawings efficiently.
+    *   **Input Form:** Provides fields to capture semantic data ("Child's Title") and expert diagnostic labels.
+    *   **Decomposition Mode:** Enables granular annotation by allowing experts to draw bounding boxes around specific sub-parts of a drawing (e.g., "sharp teeth", "large hands"), linking visual regions to specific concepts in the ontology.
+*   **Ontology (`src/core/ontology.py`):** Defines hierarchical `ConceptNode` structures to organize labels and attributes systematically.
+
 ## Installation
 
 This project uses [uv](https://github.com/astral-sh/uv) for fast and efficient dependency management.
