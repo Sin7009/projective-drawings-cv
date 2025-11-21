@@ -18,6 +18,8 @@ dependencies = [
     "plotly",
     "mediapipe",
     "ultralytics",
+    "streamlit",
+    "streamlit-drawable-canvas",
 ]
 
 [project.optional-dependencies]
