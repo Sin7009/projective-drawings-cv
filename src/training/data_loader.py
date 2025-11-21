@@ -165,7 +165,7 @@ class PsychometricDataLoader:
 
         return clean_df
 
-    def generate_expected_filenames(self, output_csv: str = 'filenames.csv'):
+    def generate_filename_checklist(self, output_csv: str = 'scan_checklist.csv'):
         """
         Iterates through the dataframe and generates a list of expected filenames based on the 'Ф.И.О' column.
         """
@@ -185,7 +185,7 @@ class PsychometricDataLoader:
 
         out_df = pd.DataFrame(expected_files)
         out_df.to_csv(output_csv, index=False)
-        print(f"Expected filenames saved to {output_csv}")
+        print(f"Checklist saved to {output_csv}")
 
     def analyze_correlations(self, dataframe: pd.DataFrame, target_column: str = 'target_anxiety',
                              feature_columns: Optional[List[str]] = None) -> Dict:
