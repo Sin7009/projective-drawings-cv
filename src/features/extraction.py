@@ -54,6 +54,37 @@ class FeatureExtractor:
         }
 
     @staticmethod
+    def extract_square_2_features(image: np.ndarray) -> Dict[str, float]:
+        """
+        Square 2 (Empathy):
+        - "Smoothness": ratio of convex hull perimeter to actual perimeter.
+        - High ratio = wavy/smooth.
+        """
+        contours, hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            return {
+                "smoothness": 0.0,
+                "perimeter": 0.0,
+                "hull_perimeter": 0.0
+            }
+
+        # Assume largest contour is the main drawing
+        main_contour = max(contours, key=cv2.contourArea)
+
+        contour_perimeter = cv2.arcLength(main_contour, True)
+        hull = cv2.convexHull(main_contour)
+        hull_perimeter = cv2.arcLength(hull, True)
+
+        smoothness = hull_perimeter / contour_perimeter if contour_perimeter > 0 else 0.0
+
+        return {
+            "smoothness": float(smoothness),
+            "perimeter": float(contour_perimeter),
+            "hull_perimeter": float(hull_perimeter)
+        }
+
+    @staticmethod
     def extract_square_3_features(image: np.ndarray) -> Dict[str, float]:
         """
         Square 3 (Ambition/Lines):
@@ -202,6 +233,89 @@ class FeatureExtractor:
             "intersection_count": intersection_count,
             "average_line_length": float(average_length),
             "line_count": num_lines
+        }
+
+    @staticmethod
+    def extract_square_6_features(image: np.ndarray) -> Dict[str, Any]:
+        """
+        Square 6 (Integration):
+        - Check for `is_closed_shape` (connected component creating a closed loop).
+        """
+        # Use RETR_CCOMP to find hierarchy of contours (outer and holes)
+        contours, hierarchy = cv2.findContours(image, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            return {
+                "is_closed_shape": False,
+                "num_contours": 0
+            }
+
+        # Check if any contour has a child (hierarchy field 2 != -1)
+        # Hierarchy: [Next, Previous, First_Child, Parent]
+        has_hole = False
+        if hierarchy is not None:
+            for i in range(len(contours)):
+                if hierarchy[0][i][2] != -1:
+                    has_hole = True
+                    break
+
+        return {
+            "is_closed_shape": bool(has_hole),
+            "num_contours": len(contours)
+        }
+
+    @staticmethod
+    def extract_square_7_features(image: np.ndarray) -> Dict[str, Any]:
+        """
+        Square 7 (Sensitivity):
+        - Analyze dotted pattern.
+        - If dots are connected by solid line -> "Repression".
+        - Heuristic: Low number of contours suggests connection.
+        """
+        contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        num_contours = len(contours)
+
+        # Heuristic for "Connected":
+        # Square 7 stimulus has ~8 dots.
+        # If connected, they form fewer connected components.
+        # If num_contours is low (e.g., <= 4) and there is drawing content, it implies connection.
+        is_drawn = np.count_nonzero(image) > 10 # arbitrary noise threshold
+
+        likely_connected = is_drawn and (num_contours <= 4)
+
+        return {
+            "contour_count": num_contours,
+            "dots_connected": bool(likely_connected)
+        }
+
+    @staticmethod
+    def extract_square_8_features(image: np.ndarray) -> Dict[str, Any]:
+        """
+        Square 8 (Protection):
+        - Check if drawing is *under* the arc (Enclosure).
+        - Heuristic: Calculate centroid of drawing. If significantly below top (where arc is), return True.
+        """
+        y_indices, x_indices = np.nonzero(image)
+
+        if len(y_indices) == 0:
+             return {
+                 "centroid_y_norm": 0.0,
+                 "is_under_arc": False
+             }
+
+        h, w = image.shape
+        centroid_y = np.mean(y_indices)
+
+        # Normalize centroid Y (0 is top, 1 is bottom)
+        norm_centroid_y = centroid_y / h
+
+        # Threshold: if centroid is in the lower part (e.g., > 0.4), it's likely under the arc.
+        # The arc itself is usually near the top.
+        is_under_arc = norm_centroid_y > 0.4
+
+        return {
+            "centroid_y_norm": float(norm_centroid_y),
+            "is_under_arc": bool(is_under_arc)
         }
 
     @staticmethod
