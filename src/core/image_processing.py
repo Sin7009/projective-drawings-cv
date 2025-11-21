@@ -78,7 +78,7 @@ class ImagePreprocessor:
         else:
             gray = image
         score = cv2.Laplacian(gray, cv2.CV_64F).var()
-        return score < threshold
+        return bool(score < threshold)
 
     def order_points(self, pts: np.ndarray) -> np.ndarray:
         """
