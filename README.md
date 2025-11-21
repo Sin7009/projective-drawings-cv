@@ -64,6 +64,16 @@ print(report)
 # Output: "High Anxiety correlates with avg_pressure (p=0.03) and warm_cold_ratio (p=0.01)..."
 ```
 
+### Advanced Diagnostic Layers
+The framework now includes multimodal analysis and validation strategies:
+
+*   **Multimodal Analysis:**
+    *   **Color Analysis:** Quantifies "Warm vs. Cold" and "Dark vs. Light" ratios and detects dominant color palettes to interpret emotional tone.
+    *   **Semantic Analysis:** Integrates OCR (via Tesseract) to read and interpret titles, labels, or text embedded in drawings.
+*   **Validation Strategies:**
+    *   **Convergent Validity:** Includes tools to correlate computer vision-derived scores with standard psychometric scales (e.g., anxiety, aggression) using Pearson correlation, following the methodology of Valyavko & Knyazev (2014).
+*   **Input Flexibility:** Supports both static scans and digital tablet input (time-series data) for trajectory analysis.
+
 ## Installation
 
 This project uses [uv](https://github.com/astral-sh/uv) for fast and efficient dependency management.
