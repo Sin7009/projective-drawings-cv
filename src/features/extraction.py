@@ -148,11 +148,12 @@ class FeatureExtractor:
         return {
             "pixel_density": float(pixel_density),
             "roi_density": float(roi_density),
-            "heavily_shaded": bool(heavily_shaded)
+            "heavily_shaded": bool(heavily_shaded),
+            "roi_coords": [0, roi_y_end, roi_x_start, w]  # y1, y2, x1, x2
         }
 
     @staticmethod
-    def extract_square_5_features(image: np.ndarray) -> Dict[str, float]:
+    def extract_square_5_features(image: np.ndarray) -> Dict[str, Any]:
         """
         Square 5 (Aggression/Obstacles):
         - Use cv2.HoughLinesP to find line segments.
@@ -166,11 +167,13 @@ class FeatureExtractor:
             return {
                 "intersection_count": 0,
                 "average_line_length": 0.0,
-                "line_count": 0
+                "line_count": 0,
+                "lines": []
             }
 
         total_length = 0.0
         num_lines = len(lines)
+        lines_list = []
 
         # Calculate lengths
         line_segments = []
@@ -179,6 +182,7 @@ class FeatureExtractor:
             length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
             total_length += length
             line_segments.append(((x1, y1), (x2, y2)))
+            lines_list.append([int(x1), int(y1), int(x2), int(y2)])
 
         average_length = total_length / num_lines if num_lines > 0 else 0.0
 
@@ -201,7 +205,8 @@ class FeatureExtractor:
         return {
             "intersection_count": intersection_count,
             "average_line_length": float(average_length),
-            "line_count": num_lines
+            "line_count": num_lines,
+            "lines": lines_list
         }
 
     @staticmethod
