@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from typing import Tuple, List, Dict
-from src.core.config import config
 
 def to_grayscale(image: np.ndarray) -> np.ndarray:
     """Convert an image to grayscale."""
@@ -9,10 +8,8 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     return image
 
-def binarize(image: np.ndarray, threshold: int = None) -> np.ndarray:
+def binarize(image: np.ndarray, threshold: int = 127) -> np.ndarray:
     """Apply binary thresholding."""
-    if threshold is None:
-        threshold = config.get('preprocessing.binary_threshold', 127)
     _, binary = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
     return binary
 
@@ -67,24 +64,21 @@ class ImagePreprocessor:
     and extraction of the 8 Wartegg squares.
     """
 
-    def __init__(self, target_width=None, target_height=None):
+    def __init__(self, target_width=2000, target_height=1414):
         # A4 aspect ratio approx sqrt(2) -> 1.414
-        self.width = target_width or config.get('preprocessing.target_width', 2000)
-        self.height = target_height or int(self.width * 1.414)
+        self.width = target_width
+        self.height = target_height
 
-    def check_blur(self, image: np.ndarray, threshold: float = None) -> bool:
+    def check_blur(self, image: np.ndarray, threshold: float = 100.0) -> bool:
         """
         Returns True if the image is too blurry using Laplacian Variance.
         """
-        if threshold is None:
-            threshold = config.get('preprocessing.blur_threshold', 100.0)
-
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
         score = cv2.Laplacian(gray, cv2.CV_64F).var()
-        return bool(score < threshold)
+        return score < threshold
 
     def order_points(self, pts: np.ndarray) -> np.ndarray:
         """
@@ -150,13 +144,17 @@ class ImagePreprocessor:
         Slices the rectified image into 8 squares based on Wartegg grid layout.
         Assumes standard margins and gaps (needs tuning based on your specific blank).
         """
-        rows = config.get('wzt.grid.rows', 2)
-        cols = config.get('wzt.grid.cols', 4)
-        margins_percent = config.get('wzt.grid.margins_percent', 0.1)
+        # Hardcoded percentages for a standard WZT layout.
+        # These need to be calibrated once against your specific template.
+        # Example logic:
+        rows = 2
+        cols = 4
 
         # Dimensions of one cell (approx)
         cell_w = self.width // cols
         cell_h = self.height // 3 # Assuming the grid takes up top 2/3rds
+        # Note: The user provided code uses //3. This implies the bottom 1/3 is header/footer or empty.
+        # I will stick to their code.
 
         squares = {}
         for r in range(rows):
@@ -164,8 +162,8 @@ class ImagePreprocessor:
                 idx = r * cols + c + 1
 
                 # Add margins to crop out the black borders
-                margin_x = int(cell_w * margins_percent)
-                margin_y = int(cell_h * margins_percent)
+                margin_x = int(cell_w * 0.1)
+                margin_y = int(cell_h * 0.1)
 
                 x1 = c * cell_w + margin_x
                 y1 = r * cell_h + margin_y
@@ -190,10 +188,5 @@ class ImagePreprocessor:
         warped = self.four_point_transform(image, contour)
         # Binarize after warping for cleaner lines
         warped_bin = binarize(to_grayscale(warped))
-
-        # Auto-invert if background is white (standard scan)
-        # We expect White Ink on Black Background for processing
-        if np.mean(warped_bin) > 127:
-            warped_bin = cv2.bitwise_not(warped_bin)
 
         return self.slice_grid(warped_bin)
