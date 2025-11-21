@@ -76,16 +76,23 @@ class WarteggAnalyzer:
 
         if square_id == 1:
             features = FeatureExtractor.extract_square_1_features(image)
+        elif square_id == 2:
+            features = FeatureExtractor.extract_square_2_features(image)
         elif square_id == 3:
             features = FeatureExtractor.extract_square_3_features(image)
         elif square_id == 4:
             features = FeatureExtractor.extract_square_4_features(image)
         elif square_id == 5:
             features = FeatureExtractor.extract_square_5_features(image)
+        elif square_id == 6:
+            features = FeatureExtractor.extract_square_6_features(image)
+        elif square_id == 7:
+            features = FeatureExtractor.extract_square_7_features(image)
+        elif square_id == 8:
+            features = FeatureExtractor.extract_square_8_features(image)
         else:
-            # Default or TODO for other squares
             features = {
-                "status": "pending_implementation",
+                "status": "unknown_square_id",
                 "square_id": square_id
             }
 
