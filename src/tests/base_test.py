@@ -17,9 +17,26 @@ class ProjectiveTest(ABC):
             config: A dictionary containing test-specific parameters.
         """
         self.config = config or {}
+        self.input_type = self.config.get("input_type", "scan")  # 'scan' or 'tablet'
         self.image = None
         self.preprocessed_image = None
         self.features = {}
+
+    def trajectory_analysis(self, data: Any) -> Dict[str, Any]:
+        """
+        Analyze trajectory data (start/end points, pressure, velocity).
+        Only active if input_type == 'tablet'.
+
+        Args:
+            data: Time-series data from tablet input.
+
+        Returns:
+            Dictionary of trajectory features.
+        """
+        if self.input_type != "tablet":
+            return {}
+        # Placeholder for actual trajectory analysis implementation
+        return {"status": "Not implemented", "points_count": len(data) if hasattr(data, '__len__') else 0}
 
     @abstractmethod
     def load_image(self, filepath: str) -> None:
