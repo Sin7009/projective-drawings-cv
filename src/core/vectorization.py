@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
+from src.core.config import config
 
 @dataclass
 class StrokeToken:
@@ -15,13 +16,9 @@ class StrokeTokenizer:
     and filters out noise based on context.
     """
 
-    DOT_AREA_THRESHOLD: int = 100
-    ASPECT_RATIO_THRESHOLD: float = 3.0
-    ISOLATION_DISTANCE_THRESHOLD: float = 50.0
-
-    def __init__(self, dot_area_threshold: int = 100, aspect_ratio_threshold: float = 3.0, isolation_distance_threshold: float = 50.0):
-        self.dot_area_threshold = dot_area_threshold
-        self.aspect_ratio_threshold = aspect_ratio_threshold
+    def __init__(self, dot_area_threshold: int = None, aspect_ratio_threshold: float = None, isolation_distance_threshold: float = 50.0):
+        self.dot_area_threshold = dot_area_threshold or config.get('vectorization.dot_max_area', 100)
+        self.aspect_ratio_threshold = aspect_ratio_threshold or config.get('vectorization.line_aspect_ratio', 3.0)
         self.isolation_distance_threshold = isolation_distance_threshold
 
     def _classify_blob(self, stats: dict) -> str:

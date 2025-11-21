@@ -1,0 +1,14 @@
+preprocessing:
+  blur_threshold: 100.0
+  binary_threshold: 127
+  target_width: 2000
+
+vectorization:
+  dot_max_area: 100
+  line_aspect_ratio: 3.0
+
+wzt:
+  grid:
+    rows: 2
+    cols: 4
+    margins_percent: 0.1
