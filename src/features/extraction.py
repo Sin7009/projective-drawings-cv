@@ -1,12 +1,122 @@
 import cv2
 import numpy as np
 from scipy import stats
-from typing import Tuple, Dict, Any, List
+from scipy.stats import entropy
+from typing import Tuple, Dict, Any, List, Optional
+from pathlib import Path
+from loguru import logger
+import skimage.feature as ft
 
 class FeatureExtractor:
     """
-    Static methods for extracting specific Wartegg features based on the square ID.
+    Static methods for extracting features from drawings.
+    Includes specific Wartegg square features and global texture/pressure metrics.
     """
+
+    @staticmethod
+    def extract_global_features(image_path: Path) -> Optional[Dict[str, Any]]:
+        """
+        Extracts global features (Pressure, Entropy, Texture) from a raw image.
+
+        Algorithmic Improvements:
+        - Robust Pressure: Background subtraction (GaussianBlur -> Divide).
+        - Rotation Invariant GLCM: Average over 4 angles.
+        - Safety: Handles missing files/None images.
+        """
+        # Safety check: path validity
+        if not image_path.exists():
+            logger.error(f"Image not found: {image_path}")
+            return None
+
+        # Load image (Read as Color to preserve potential color info, though we mostly use gray)
+        # Using cv2.IMREAD_COLOR for general compatibility, then converting.
+        img = cv2.imread(str(image_path))
+
+        # Safety check: valid image
+        if img is None:
+            logger.error(f"Failed to load image (cv2 returned None): {image_path}")
+            return None
+
+        try:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # --- 1. Robust Pressure Calculation ---
+            # "Apply GaussianBlur to estimate background. Divide original image by background."
+
+            # Estimate background (illumination)
+            # Kernel size needs to be large enough to blur out the strokes but keep the background trend
+            # If image is large, kernel should be larger. Assuming standard A4 scan resolution ~2000px width.
+            # 101 is a reasonable starting point for document background estimation.
+            bg_blur = cv2.GaussianBlur(gray, (101, 101), 0)
+
+            # Avoid division by zero
+            bg_blur[bg_blur == 0] = 1
+
+            # Divide: (original / background) * 255. Result is normalized image where bg is white (255)
+            # This flattens the lighting.
+            normalized = cv2.divide(gray, bg_blur, scale=255)
+
+            # Now, strokes are dark, background is white (near 255).
+            # "Mean intensity of the strokes"
+            # We need to segment strokes. Simple threshold or check deviations.
+            # Inverted: 255 - normalized. Bg becomes 0. Strokes become bright.
+            inverted_norm = 255 - normalized
+
+            # Threshold to identify "ink" vs "noise/paper"
+            # Since we normalized, paper should be very close to 0 (in inverted).
+            # Let's use a threshold.
+            ink_mask = inverted_norm > 10 # Tunable threshold
+
+            if np.any(ink_mask):
+                # Calculate mean of INK pixels only.
+                # Higher value = Darker original stroke = Higher Pressure
+                mean_pressure = np.mean(inverted_norm[ink_mask])
+            else:
+                mean_pressure = 0.0
+
+            # --- 2. Entropy (Chaos/Complexity) ---
+            # Calculate on the normalized gray image to reduce lighting noise
+            hist = cv2.calcHist([normalized], [0], None, [256], [0, 256])
+            hist_norm = hist.ravel() / hist.sum()
+            img_entropy = entropy(hist_norm, base=2)
+
+            # --- 3. Rotation Invariant Texture Analysis (GLCM) ---
+            # "compute the GLCM for ALL 4 angles: [0, np.pi/4, np.pi/2, 3*np.pi/4]"
+            # distances=[1], levels=256
+
+            # skimage expects integer image for GLCM.
+            # We use the normalized image to avoid lighting artifacts affecting texture.
+            glcm = ft.graycomatrix(
+                normalized,
+                distances=[1],
+                angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],
+                levels=256,
+                symmetric=True,
+                normed=True
+            )
+
+            # Properties to extract
+            props = ['contrast', 'homogeneity', 'energy', 'correlation', 'dissimilarity', 'ASM']
+            texture_feats = {}
+
+            for prop in props:
+                # graycoprops returns (num_distances, num_angles)
+                val_matrix = ft.graycoprops(glcm, prop)
+                # Average over all angles (axis 1) and distances (axis 0 - only 1 distance here)
+                # This makes it rotation invariant.
+                avg_val = np.mean(val_matrix)
+                texture_feats[prop] = round(float(avg_val), 4)
+
+            return {
+                "filename": image_path.name,
+                "mean_pressure": round(float(mean_pressure), 2),
+                "entropy": round(float(img_entropy), 4),
+                **texture_feats
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing {image_path}: {e}")
+            return None
 
     @staticmethod
     def extract_square_1_features(image: np.ndarray) -> Dict[str, float]:
@@ -109,24 +219,6 @@ class FeatureExtractor:
         # Perform Linear Regression
         slope, intercept, r_value, p_value, std_err = stats.linregress(x_indices, y_indices)
 
-        # Note: In image coordinates, Y increases downwards.
-        # If "High positive slope = high ambition" refers to visual "uphill",
-        # in Cartesian coordinates (y up), slope > 0.
-        # In image coordinates (y down), visual uphill means y decreases as x increases -> slope < 0.
-        # The requirement says "High positive slope = high ambition".
-        # Usually in CV for graphs, we might invert Y.
-        # Assuming standard mathematical slope interpretation on the visual representation:
-        # Visual "Uphill" (/): x increases, visual y increases (image y decreases).
-        # Let's just return the calculated slope for now, but keep in mind the coordinate system.
-        # If the user means visually ascending lines, that corresponds to negative slope in image coordinates (0,0 at top-left).
-        # BUT, standard linregress on (x, y_image) gives dy_image/dx.
-        # A line from (0, 100) to (100, 0) [visually uphill] has slope (0-100)/(100-0) = -1.
-        # A line from (0, 0) to (100, 100) [visually downhill] has slope 1.
-        # NOTE: We return the raw mathematical slope in image coordinates (y-down).
-        # Downstream interpretation logic must account for this:
-        # - High Ambition (Visual Uphill) corresponds to Negative Slope values.
-        # - Low Ambition (Visual Downhill) corresponds to Positive Slope values.
-
         return {
             "slope": float(slope), # In image coordinates
             "intercept": float(intercept),
@@ -138,13 +230,6 @@ class FeatureExtractor:
         """
         Square 4 (Anxiety/Darkness):
         - Calculate pixel_density: (count of black pixels / total pixels).
-          Wait, the input image is likely binarized.
-          The requirement says "count of black pixels".
-          If our binarization makes drawing white on black background (standard for processing),
-          then we should count white pixels as "drawn pixels".
-          If the requirement literally means "darkness" in the original drawing,
-          then "black pixels" (ink) corresponds to "white pixels" in our inverted binary map.
-          Let's assume 'image' is white-on-black (drawing is white).
         - Detect if the pre-printed black square was heavily shaded over (check ROI around the stimulus).
         """
         h, w = image.shape
@@ -155,18 +240,7 @@ class FeatureExtractor:
 
         # Detect shading over stimulus
         # Square 4 stimulus is a small black square.
-        # In the original Wartegg grid, Square 4 has a small black square in the top right?
-        # Actually usually it's Top Right.
         # Let's assume we need to check a specific ROI.
-        # Since I don't have the exact coordinates of the stimulus relative to the cell,
-        # I'll assume it's in the top-right quadrant based on standard WZT Square 4.
-        # But wait, the prompt doesn't specify the location.
-        # "check ROI around the stimulus".
-        # I will define a heuristic ROI. Standard Square 4 stimulus is usually near top-right.
-        # Let's define a region in top right.
-
-        # Using the blank WZT description from memory/online sources:
-        # Square 4: Small black square in the upper right corner.
         roi_x_start = int(w * 0.7)
         roi_y_end = int(h * 0.3)
         roi = image[0:roi_y_end, roi_x_start:w]
@@ -216,16 +290,6 @@ class FeatureExtractor:
             lines_list.append([int(x1), int(y1), int(x2), int(y2)])
 
         average_length = total_length / num_lines if num_lines > 0 else 0.0
-
-        # Check intersections
-        # A naive approach checks intersection between all pairs of detected lines.
-        # The requirement says "Check if lines intersect or connect the two stimulus strokes."
-        # Since I don't know the exact position of stimulus strokes in the image coordinates
-        # (unless I find them, but they are part of the image now),
-        # I will count intersections between the drawn lines themselves as a proxy for "intersection count" complexity
-        # OR I need to identify which lines are stimulus.
-        # Without a reference blank or stimulus separation, it's hard to know which pixels are stimulus.
-        # Assuming the prompt "intersection_count" refers to intersections found among the detected lines.
 
         intersection_count = 0
         for i in range(num_lines):

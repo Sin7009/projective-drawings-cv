@@ -15,8 +15,8 @@ class ConfigLoader:
 
     def _load_config(self):
         # Assuming the config file is at the root 'config/settings.yaml'
-        # Relative to this file (src/core/config.py), it would be ../../config/settings.yaml
-        base_path = Path(__file__).parent.parent.parent
+        # Relative to this file (src/config.py), it would be ../config/settings.yaml
+        base_path = Path(__file__).parent.parent
         config_path = base_path / "config" / "settings.yaml"
 
         if not config_path.exists():

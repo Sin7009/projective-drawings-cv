@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pytest
-from src.core.image_processing import ImagePreprocessor
+from src.features.processing import ImagePreprocessor
 
 @pytest.fixture
 def preprocessor():

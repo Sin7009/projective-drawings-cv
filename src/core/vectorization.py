@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
-from src.core.config import config
+from src.config import config
 
 @dataclass
 class StrokeToken:

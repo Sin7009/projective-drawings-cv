@@ -6,7 +6,7 @@ from scipy import stats
 from typing import Dict, List, Tuple, Optional
 from sklearn.model_selection import train_test_split
 from src.features.color import ColorAnalyzer
-from src.core.image_processing import estimate_pressure, estimate_line_thickness, to_grayscale
+from src.features.processing import estimate_pressure, estimate_line_thickness, to_grayscale
 
 class DataLinker:
     """

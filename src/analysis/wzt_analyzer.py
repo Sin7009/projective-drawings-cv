@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, Any, List, Optional
 import os
 
-from src.core.image_processing import ImagePreprocessor
+from src.features.processing import ImagePreprocessor
 from src.core.vectorization import StrokeTokenizer
 from src.features.memory import SymbolRegistry
 from src.features.extraction import FeatureExtractor
