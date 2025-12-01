@@ -5,7 +5,7 @@ import numpy as np
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from src.core.image_processing import ImagePreprocessor
+from src.features.processing import ImagePreprocessor
 
 class Reporter:
     """

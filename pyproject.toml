@@ -23,6 +23,9 @@ dependencies = [
     "pytest>=8.4.2",
     "pyyaml>=6.0.3",
     "opencv-contrib-python-headless>=4.11.0.86",
+    "scikit-image",
+    "loguru",
+    "typer",
 ]
 
 [project.optional-dependencies]

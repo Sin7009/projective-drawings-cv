@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from typing import Tuple, List, Dict
-from src.core.config import config
+from src.config import config
 
 def to_grayscale(image: np.ndarray) -> np.ndarray:
     """Convert an image to grayscale."""
