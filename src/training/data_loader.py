@@ -168,6 +168,9 @@ class PsychometricDataLoader:
     def generate_filename_checklist(self, output_csv: str = 'scan_checklist.csv'):
         """
         Iterates through the dataframe and generates a list of expected filenames based on the 'Ф.И.О' column.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing original names and expected filenames.
         """
         if self.df is None:
              raise ValueError("Dataframe not loaded. Call load_and_merge first.")
@@ -186,6 +189,7 @@ class PsychometricDataLoader:
         out_df = pd.DataFrame(expected_files)
         out_df.to_csv(output_csv, index=False)
         print(f"Checklist saved to {output_csv}")
+        return out_df
 
     def analyze_correlations(self, dataframe: pd.DataFrame, target_column: str = 'target_anxiety',
                              feature_columns: Optional[List[str]] = None) -> Dict:
