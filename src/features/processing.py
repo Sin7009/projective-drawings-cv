@@ -1,26 +1,79 @@
 import cv2
 import numpy as np
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 from src.config import config
 
+# Constants for image processing
+DEFAULT_BINARY_THRESHOLD = 127
+INK_DETECTION_THRESHOLD = 20
+DEFAULT_BLUR_THRESHOLD = 100.0
+A4_ASPECT_RATIO = 1.414
+DEFAULT_TARGET_WIDTH = 2000
+CONTOUR_SEARCH_LIMIT = 5
+POLYGON_APPROX_FACTOR = 0.02
+CANNY_THRESHOLD_LOW = 75
+CANNY_THRESHOLD_HIGH = 200
+GAUSSIAN_BLUR_KERNEL = (5, 5)
+
+
 def to_grayscale(image: np.ndarray) -> np.ndarray:
-    """Convert an image to grayscale."""
+    """
+    Convert an image to grayscale.
+    
+    Args:
+        image: Input image (can be grayscale or color)
+        
+    Returns:
+        Grayscale image
+        
+    Raises:
+        ValueError: If image is None or empty
+    """
+    if image is None or image.size == 0:
+        raise ValueError("Image cannot be None or empty")
+        
     if len(image.shape) == 3:
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     return image
 
 def binarize(image: np.ndarray, threshold: int = None) -> np.ndarray:
-    """Apply binary thresholding."""
+    """
+    Apply binary thresholding to an image.
+    
+    Args:
+        image: Input grayscale image
+        threshold: Threshold value (uses config default if None)
+        
+    Returns:
+        Binary image
+        
+    Raises:
+        ValueError: If image is None or empty
+    """
+    if image is None or image.size == 0:
+        raise ValueError("Image cannot be None or empty")
+        
     if threshold is None:
-        threshold = config.get('preprocessing.binary_threshold', 127)
+        threshold = config.get('preprocessing.binary_threshold', DEFAULT_BINARY_THRESHOLD)
     _, binary = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
     return binary
 
 def estimate_line_thickness(binary_image: np.ndarray) -> float:
     """
     Estimate average line thickness using distance transform.
-    Assumes white lines on black background or inverted binary.
+    
+    Args:
+        binary_image: Binary image with lines (assumes white lines on black background)
+        
+    Returns:
+        Average line thickness in pixels
+        
+    Raises:
+        ValueError: If image is None or empty
     """
+    if binary_image is None or binary_image.size == 0:
+        raise ValueError("Image cannot be None or empty")
+        
     # Ensure we are working with white strokes on black background
     if np.mean(binary_image) > 127:
         # Input is likely black text on white bg, invert it
@@ -42,8 +95,19 @@ def estimate_pressure(image: np.ndarray) -> float:
     """
     Estimate pen pressure based on pixel intensity in grayscale image.
     Lower intensity values (darker pixels) imply higher pressure.
-    Returns a normalized pressure value (0-1).
+    
+    Args:
+        image: Input image (color or grayscale)
+        
+    Returns:
+        Normalized pressure value (0-1), where higher values indicate more pressure
+        
+    Raises:
+        ValueError: If image is None or empty
     """
+    if image is None or image.size == 0:
+        raise ValueError("Image cannot be None or empty")
+        
     gray = to_grayscale(image)
 
     # Invert so that dark pixels (ink) are high values
@@ -51,7 +115,7 @@ def estimate_pressure(image: np.ndarray) -> float:
 
     # Mask out background (assume background is mostly 0 in inverted)
     # Simple threshold to identify 'ink'
-    mask = inverted > 20
+    mask = inverted > INK_DETECTION_THRESHOLD
 
     if not np.any(mask):
         return 0.0
@@ -67,17 +131,37 @@ class ImagePreprocessor:
     and extraction of the 8 Wartegg squares.
     """
 
-    def __init__(self, target_width=None, target_height=None):
+    def __init__(self, target_width: Optional[int] = None, target_height: Optional[int] = None):
+        """
+        Initialize the image preprocessor.
+        
+        Args:
+            target_width: Target width for standardized output (uses config default if None)
+            target_height: Target height for standardized output (calculated from width if None)
+        """
         # A4 aspect ratio approx sqrt(2) -> 1.414
-        self.width = target_width or config.get('preprocessing.target_width', 2000)
-        self.height = target_height or int(self.width * 1.414)
+        self.width = target_width or config.get('preprocessing.target_width', DEFAULT_TARGET_WIDTH)
+        self.height = target_height or int(self.width * A4_ASPECT_RATIO)
 
-    def check_blur(self, image: np.ndarray, threshold: float = None) -> bool:
+    def check_blur(self, image: np.ndarray, threshold: Optional[float] = None) -> bool:
         """
-        Returns True if the image is too blurry using Laplacian Variance.
+        Check if image is too blurry using Laplacian Variance.
+        
+        Args:
+            image: Input image to check
+            threshold: Blur threshold (uses config default if None)
+            
+        Returns:
+            True if image is blurry, False otherwise
+            
+        Raises:
+            ValueError: If image is None or empty
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         if threshold is None:
-            threshold = config.get('preprocessing.blur_threshold', 100.0)
+            threshold = config.get('preprocessing.blur_threshold', DEFAULT_BLUR_THRESHOLD)
 
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -121,23 +205,35 @@ class ImagePreprocessor:
 
     def find_paper_contour(self, image: np.ndarray) -> np.ndarray:
         """
-        Finds the largest 4-sided contour assumed to be the paper sheet.
+        Find the largest 4-sided contour assumed to be the paper sheet.
+        
+        Args:
+            image: Input image containing the paper
+            
+        Returns:
+            4-point contour representing the paper corners
+            
+        Raises:
+            ValueError: If paper contour cannot be found or image is invalid
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
 
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        edged = cv2.Canny(blurred, 75, 200)
+        blurred = cv2.GaussianBlur(gray, GAUSSIAN_BLUR_KERNEL, 0)
+        edged = cv2.Canny(blurred, CANNY_THRESHOLD_LOW, CANNY_THRESHOLD_HIGH)
 
         cnts, _ = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:5]
+        cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:CONTOUR_SEARCH_LIMIT]
 
         for c in cnts:
             peri = cv2.arcLength(c, True)
             # Approx the contour to a polygon
-            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            approx = cv2.approxPolyDP(c, POLYGON_APPROX_FACTOR * peri, True)
 
             # If it has 4 points, we assume it's our paper
             if len(approx) == 4:
@@ -178,7 +274,19 @@ class ImagePreprocessor:
         return squares
 
     def process(self, image_path: str) -> Dict[int, np.ndarray]:
-        """Main pipeline."""
+        """
+        Main processing pipeline: loads, deskews, and slices image into Wartegg squares.
+        
+        Args:
+            image_path: Path to the input image file
+            
+        Returns:
+            Dictionary mapping square IDs (1-8) to their binary images
+            
+        Raises:
+            FileNotFoundError: If image file doesn't exist
+            ValueError: If image processing fails
+        """
         image = cv2.imread(image_path)
         if image is None:
             raise FileNotFoundError(f"Image not found at path: {image_path}")
