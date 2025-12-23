@@ -7,6 +7,21 @@ from pathlib import Path
 from loguru import logger
 import skimage.feature as ft
 
+# Constants for image processing
+BACKGROUND_BLUR_KERNEL_SIZE = 101
+INK_DETECTION_THRESHOLD = 10
+GLCM_DISTANCE = 1
+GLCM_LEVELS = 256
+GLCM_ANGLES = [0, np.pi/4, np.pi/2, 3*np.pi/4]
+HOUGH_THRESHOLD = 20
+HOUGH_MIN_LINE_LENGTH = 10
+HOUGH_MAX_LINE_GAP = 10
+ROI_DENSITY_THRESHOLD = 0.5
+CENTROID_Y_THRESHOLD = 0.4
+MAX_CONTOURS_FOR_CONNECTION = 4
+MIN_DRAWN_PIXELS = 10
+
+
 class FeatureExtractor:
     """
     Static methods for extracting features from drawings.
@@ -46,8 +61,7 @@ class FeatureExtractor:
             # Estimate background (illumination)
             # Kernel size needs to be large enough to blur out the strokes but keep the background trend
             # If image is large, kernel should be larger. Assuming standard A4 scan resolution ~2000px width.
-            # 101 is a reasonable starting point for document background estimation.
-            bg_blur = cv2.GaussianBlur(gray, (101, 101), 0)
+            bg_blur = cv2.GaussianBlur(gray, (BACKGROUND_BLUR_KERNEL_SIZE, BACKGROUND_BLUR_KERNEL_SIZE), 0)
 
             # Avoid division by zero
             bg_blur[bg_blur == 0] = 1
@@ -64,8 +78,7 @@ class FeatureExtractor:
 
             # Threshold to identify "ink" vs "noise/paper"
             # Since we normalized, paper should be very close to 0 (in inverted).
-            # Let's use a threshold.
-            ink_mask = inverted_norm > 10 # Tunable threshold
+            ink_mask = inverted_norm > INK_DETECTION_THRESHOLD
 
             if np.any(ink_mask):
                 # Calculate mean of INK pixels only.
@@ -81,16 +94,14 @@ class FeatureExtractor:
             img_entropy = entropy(hist_norm, base=2)
 
             # --- 3. Rotation Invariant Texture Analysis (GLCM) ---
-            # "compute the GLCM for ALL 4 angles: [0, np.pi/4, np.pi/2, 3*np.pi/4]"
-            # distances=[1], levels=256
-
+            # Compute the GLCM for all 4 angles to achieve rotation invariance
             # skimage expects integer image for GLCM.
             # We use the normalized image to avoid lighting artifacts affecting texture.
             glcm = ft.graycomatrix(
                 normalized,
-                distances=[1],
-                angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],
-                levels=256,
+                distances=[GLCM_DISTANCE],
+                angles=GLCM_ANGLES,
+                levels=GLCM_LEVELS,
                 symmetric=True,
                 normed=True
             )
@@ -122,10 +133,18 @@ class FeatureExtractor:
     def extract_square_1_features(image: np.ndarray) -> Dict[str, float]:
         """
         Square 1 (Ego/Point):
-        - Find the centroid of all drawn pixels.
-        - Calculate displacement_vector: (drawing_center_x - image_center_x, drawing_center_y - image_center_y).
-        - Return scalar distance and vector angle.
+        Analyzes the centroid displacement of drawn content from the image center.
+        This can indicate the child's sense of self-positioning.
+        
+        Args:
+            image: Binary image of square 1
+            
+        Returns:
+            Dictionary containing centroid coordinates, displacement distance and angle
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         # Find non-zero pixels
         y_indices, x_indices = np.nonzero(image)
 
@@ -167,9 +186,17 @@ class FeatureExtractor:
     def extract_square_2_features(image: np.ndarray) -> Dict[str, float]:
         """
         Square 2 (Empathy):
-        - "Smoothness": ratio of convex hull perimeter to actual perimeter.
-        - High ratio = wavy/smooth.
+        Analyzes the smoothness of curves drawn, which may relate to emotional expression.
+        
+        Args:
+            image: Binary image of square 2
+            
+        Returns:
+            Dictionary containing smoothness ratio and perimeter measurements
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         contours, hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         if not contours:
@@ -198,11 +225,18 @@ class FeatureExtractor:
     def extract_square_3_features(image: np.ndarray) -> Dict[str, float]:
         """
         Square 3 (Ambition/Lines):
-        - Skeletonize the image (reduce lines to 1px width).
-        - Get coordinates of all lit pixels.
-        - Perform Linear Regression (scipy.stats.linregress) on these points.
-        - Return slope (m) and intercept (b). High positive slope = high ambition.
+        Analyzes the slope of drawn lines, which may indicate aspiration levels.
+        Uses skeletonization and linear regression.
+        
+        Args:
+            image: Binary image of square 3
+            
+        Returns:
+            Dictionary containing slope, intercept, and correlation coefficient
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         # Skeletonize
         skeleton = cv2.ximgproc.thinning(image)
 
@@ -229,9 +263,17 @@ class FeatureExtractor:
     def extract_square_4_features(image: np.ndarray) -> Dict[str, Any]:
         """
         Square 4 (Anxiety/Darkness):
-        - Calculate pixel_density: (count of black pixels / total pixels).
-        - Detect if the pre-printed black square was heavily shaded over (check ROI around the stimulus).
+        Measures shading density, which may correlate with anxiety levels.
+        
+        Args:
+            image: Binary image of square 4
+            
+        Returns:
+            Dictionary containing pixel density, ROI density, and shading indicators
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         h, w = image.shape
         total_pixels = h * w
         drawn_pixels = np.count_nonzero(image)
@@ -248,7 +290,7 @@ class FeatureExtractor:
         roi_density = np.count_nonzero(roi) / (roi.size) if roi.size > 0 else 0.0
 
         # Heuristic: if high density in that area, it's shaded over.
-        heavily_shaded = roi_density > 0.5
+        heavily_shaded = roi_density > ROI_DENSITY_THRESHOLD
 
         return {
             "pixel_density": float(pixel_density),
@@ -261,12 +303,24 @@ class FeatureExtractor:
     def extract_square_5_features(image: np.ndarray) -> Dict[str, Any]:
         """
         Square 5 (Aggression/Obstacles):
-        - Use cv2.HoughLinesP to find line segments.
-        - Check if lines intersect or connect the two stimulus strokes.
-        - Return intersection_count and average_line_length.
+        Detects line segments and their intersections, which may relate to handling obstacles.
+        
+        Args:
+            image: Binary image of square 5
+            
+        Returns:
+            Dictionary containing line count, intersections, and average line length
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         # HoughLinesP requires 8-bit single channel
-        lines = cv2.HoughLinesP(image, 1, np.pi / 180, threshold=20, minLineLength=10, maxLineGap=10)
+        lines = cv2.HoughLinesP(
+            image, 1, np.pi / 180, 
+            threshold=HOUGH_THRESHOLD, 
+            minLineLength=HOUGH_MIN_LINE_LENGTH, 
+            maxLineGap=HOUGH_MAX_LINE_GAP
+        )
 
         if lines is None:
             return {
@@ -308,8 +362,17 @@ class FeatureExtractor:
     def extract_square_6_features(image: np.ndarray) -> Dict[str, Any]:
         """
         Square 6 (Integration):
-        - Check for `is_closed_shape` (connected component creating a closed loop).
+        Detects closed shapes which may indicate integration and completion tendencies.
+        
+        Args:
+            image: Binary image of square 6
+            
+        Returns:
+            Dictionary indicating presence of closed shapes and contour count
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         # Use RETR_CCOMP to find hierarchy of contours (outer and holes)
         contours, hierarchy = cv2.findContours(image, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -337,20 +400,26 @@ class FeatureExtractor:
     def extract_square_7_features(image: np.ndarray) -> Dict[str, Any]:
         """
         Square 7 (Sensitivity):
-        - Analyze dotted pattern.
-        - If dots are connected by solid line -> "Repression".
-        - Heuristic: Low number of contours suggests connection.
+        Analyzes whether dots are connected, which may indicate emotional expression style.
+        
+        Args:
+            image: Binary image of square 7
+            
+        Returns:
+            Dictionary indicating contour count and connection likelihood
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         num_contours = len(contours)
 
         # Heuristic for "Connected":
         # Square 7 stimulus has ~8 dots.
         # If connected, they form fewer connected components.
-        # If num_contours is low (e.g., <= 4) and there is drawing content, it implies connection.
-        is_drawn = np.count_nonzero(image) > 10 # arbitrary noise threshold
+        is_drawn = np.count_nonzero(image) > MIN_DRAWN_PIXELS
 
-        likely_connected = is_drawn and (num_contours <= 4)
+        likely_connected = is_drawn and (num_contours <= MAX_CONTOURS_FOR_CONNECTION)
 
         return {
             "contour_count": num_contours,
@@ -361,9 +430,17 @@ class FeatureExtractor:
     def extract_square_8_features(image: np.ndarray) -> Dict[str, Any]:
         """
         Square 8 (Protection):
-        - Check if drawing is *under* the arc (Enclosure).
-        - Heuristic: Calculate centroid of drawing. If significantly below top (where arc is), return True.
+        Analyzes whether drawing is positioned under the arc, indicating need for protection.
+        
+        Args:
+            image: Binary image of square 8
+            
+        Returns:
+            Dictionary with centroid position and under-arc indicator
         """
+        if image is None or image.size == 0:
+            raise ValueError("Image cannot be None or empty")
+            
         y_indices, x_indices = np.nonzero(image)
 
         if len(y_indices) == 0:
@@ -378,9 +455,9 @@ class FeatureExtractor:
         # Normalize centroid Y (0 is top, 1 is bottom)
         norm_centroid_y = centroid_y / h
 
-        # Threshold: if centroid is in the lower part (e.g., > 0.4), it's likely under the arc.
+        # Threshold: if centroid is in the lower part, it's likely under the arc.
         # The arc itself is usually near the top.
-        is_under_arc = norm_centroid_y > 0.4
+        is_under_arc = norm_centroid_y > CENTROID_Y_THRESHOLD
 
         return {
             "centroid_y_norm": float(norm_centroid_y),

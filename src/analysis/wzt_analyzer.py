@@ -8,28 +8,48 @@ from src.core.vectorization import StrokeTokenizer
 from src.features.memory import SymbolRegistry
 from src.features.extraction import FeatureExtractor
 
+# Constants
+MIN_TOKEN_COUNT_FOR_SEMANTIC_CHECK = 0
+
+
 class WarteggAnalyzer:
     """
-    Analyzes Wartegg Zeichentest (WZT) drawings.
-    Integrates preprocessing, stroke tokenization, and semantic memory lookup.
+    Analyzes Wartegg Zeichentest (WZT) drawings using a multi-stage pipeline.
+    
+    Integrates:
+    - Image preprocessing and grid extraction
+    - Stroke tokenization and noise filtering
+    - Semantic memory lookup for known symbols
+    - Square-specific feature extraction
     """
 
     def __init__(self):
+        """Initialize the analyzer with required components."""
         self.preprocessor = ImagePreprocessor()
         self.tokenizer = StrokeTokenizer()
         self.memory = SymbolRegistry()
-        # Ensure we have a DB file or it will start empty
 
     def process_and_analyze(self, image_path: str) -> Dict[int, Dict[str, Any]]:
         """
-        Main pipeline:
-        1. Preprocess image (deskew, crop squares).
+        Main analysis pipeline for Wartegg drawings.
+        
+        Pipeline stages:
+        1. Preprocess image (deskew, extract squares)
         2. For each square:
-           a. Tokenize and clean (remove noise).
-           b. Check Semantic Memory for known symbols.
-           c. (If no match) Perform standard analysis (placeholder).
+           a. Tokenize and clean (remove noise)
+           b. Check semantic memory for known symbols
+           c. Perform square-specific analysis
+           
+        Args:
+            image_path: Path to the image file
+            
+        Returns:
+            Dictionary mapping square IDs (1-8) to their analysis results
+            
+        Raises:
+            FileNotFoundError: If image file doesn't exist
+            ValueError: If preprocessing fails
         """
-
         # 1. Preprocess
         try:
             squares = self.preprocessor.process(image_path)
@@ -53,7 +73,7 @@ class WarteggAnalyzer:
 
             # 2b. Semantic Memory Lookup
             # Only check if there is significant content
-            if len(tokens) > 0:
+            if len(tokens) > MIN_TOKEN_COUNT_FOR_SEMANTIC_CHECK:
                 match = self.memory.find_match(cleaned_image)
                 if match:
                     square_result["semantic_match"] = match
@@ -70,7 +90,24 @@ class WarteggAnalyzer:
 
     def _perform_standard_analysis(self, image: np.ndarray, square_id: int) -> Dict[str, Any]:
         """
-        Dispatches to specific feature extraction logic based on square_id.
+        Dispatch to specific feature extraction logic based on square ID.
+        
+        Each square has psychologically meaningful stimuli that elicit specific features:
+        - Square 1: Ego/Self (centroid displacement)
+        - Square 2: Empathy (smoothness of curves)
+        - Square 3: Ambition (line slopes)
+        - Square 4: Anxiety (shading density)
+        - Square 5: Aggression (line intersections)
+        - Square 6: Integration (closed shapes)
+        - Square 7: Sensitivity (dot connections)
+        - Square 8: Protection (positioning under arc)
+        
+        Args:
+            image: Binary image of the square
+            square_id: Square identifier (1-8)
+            
+        Returns:
+            Dictionary containing extracted features
         """
         features = {}
 
